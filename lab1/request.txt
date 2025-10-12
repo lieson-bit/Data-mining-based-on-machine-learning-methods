@@ -1,0 +1,1140 @@
+# ЗАДАНИЕ
+Дан многомерный размеченный набор данных. Необходимо выполнить регрессионный анализ данных на основе полносвязной нейросетевой модели и нейросетевой модели, указанной в варианте, в соответствии со следующей последовательностью этапов.
+1. Загрузить необходимые пакеты и библиотеки.
+2. Загрузить данные из указанного источника.
+3. Выполнить разведочный анализ данных в соответствии с этапами описанными в файле Этапы проекта машинного обучения в примерах.pdf:\
+a. Ознакомление с данными с помощью методов описательной статистики;\
+b. Выполнить визуализацию данных одномерную для понимания распределения данных и многомерную для выяснения зависимостей между признаками;\
+c. При необходимости выполнить очистку данных одним из методов.\
+d. Проанализировать корреляционную зависимость между признаками;\
+e. Поэкспериментировать с комбинациями атрибутов. При необходимости добавить новые атрибуты в набор данных.\
+f. Выполнить отбор существенных признаков. Сформировать набор данных из существенных признаков.\
+g. При необходимости преобразовать текстовые или категориальные признаки одним из методов.\
+h. Выполнить преобразование данных для обоих наборов (исходного и сформированного) одним из методов по варианту.
+4. Анализ выполняется для исходного набора данных, преобразованного исходного набора данных, построенного набора данных и преобразованного построенного набора данных. Во всех наборах данных выделить обучающую, проверочную (валидационную) и тестовую выборки данных.
+5. Сравнить качество полносвязной нейросетевой регрессионной модели и регрессионной нейросетевой модели, указанной в варианте, на обучающей и валидационной выборках для всех наборов данных, включая их преобразованные варианты. Для оценки качества моделей использовать метрики: корень из среднеквадратичной ошибки, коэффициент детерминации R2.
+6. Для лучшей модели на лучшем наборе данных оценить качество на тестовом наборе.
+7. Для лучшей модели на лучшем наборе данных выполнить Grid поиск лучших гиперпараметров регрессионной нейросетевой модели на обучающей и валидационной выборках. Определить значения лучших гиперпараметров.
+8. Определить показатели качества полученной в результате Grid поиска регрессионной нейросетевой модели на тестовом наборе. Сравнить показатели качества лучшей модели на лучшем наборе данных до поиска гиперпараметров и после поиска гиперпараметров.
+9. Сделать выводы по проведенному анализу.
+
+# ПОСТАНОВКА ИНДИВИДУАЛЬНЫЙ ВАРИАНТ ЗАДАНИЯ
+Вариант 13
+
+**Цель проекта:** Провести регрессионный анализ данных телемониторинга болезни Паркинсона для прогнозирования целевого признака `total_UPDRS` на основе нейросетевых моделей.
+
+## Формальное описание задачи
+**Проблема:** Построение регрессионной модели для прогнозирования общего показателя UPDRS (Unified Parkinson's Disease Rating Scale) на основе голосовых характеристик пациентов.
+
+**Целевая переменная:** `total_UPDRS`
+
+**Входные признаки:** Все признаки из набора данных, за исключением:
+- `motor_UPDRS` (исключен по условию варианта)
+- `index`, `subject#` (служебные идентификаторы)
+
+**Основные этапы решения:**
+1. Разведочный анализ данных (EDA) с описательной статистикой и визуализацией
+2. Предобработка данных, включая стандартизацию и отбор признаков
+3. Построение и сравнение двух типов нейросетевых моделей:
+   - Полносвязная нейронная сеть(MLP) Multi-Layer Perceptron
+   - Двунаправленная LSTM-сеть
+4. Оптимизация гиперпараметров и оценка качества моделей
+
+## Мотивация и применение
+**Практическая значимость:** Разработанная модель может быть использована для:
+- Неинвазивного мониторинга прогрессирования болезни Паркинсона
+- Объективной оценки эффективности лечения
+- Раннего выявления ухудшения состояния пациентов
+
+**Метрики качества:**
+- RMSE (корень из среднеквадратичной ошибки)
+- R² (коэффициент детерминации)
+
+## Предметная область
+Болезнь Паркинсона - прогрессирующее неврологическое заболевание, где показатель UPDRS является стандартным инструментом оценки тяжести симптомов. Голосовые характеристики (jitter, shimmer, HNR и др.) являются важными маркерами двигательных нарушений, что делает возможным построение регрессионных моделей для прогнозирования общего состояния пациента.
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import random
+from pandas.plotting import scatter_matrix
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import KNNImputer
+from sklearn.feature_selection import SelectKBest, f_regression
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+import tensorflow as tf
+#from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Input, Dropout, BatchNormalization, LSTM, Bidirectional, Masking
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from scipy.stats import loguniform, randint
+from scipy.stats.mstats import winsorize
+from sklearn.base import BaseEstimator, TransformerMixin
+from scipy.stats import skew, kurtosis
+from IPython.display import display
+import warnings
+warnings.filterwarnings('ignore')
+# We will ensure the reproducibility of calculations by fixing the random seed values, enabling deterministic operations in TensorFlow, and limiting multithreading.
+SEED = 42
+os.environ["PYTHONHASHSEED"] = str(SEED)
+os.environ["TF_DETERMINISTIC_OPS"] = "1"
+os.environ["TF_CUDNN_DETERMINISTIC"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
+
+random.seed(SEED)
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
+
+# Load the dataset
+data_path = 'E:/Data-mining-based-on-machine-learning-methods/lab1/LR!_datasets/V5.csv'
+df = pd.read_csv(data_path)
+
+print(f"Размер: {df.shape}")
+print(f"Колонки: {df.columns.tolist()}")
+
+print("\nПервые 5 строк:")
+display(df.head())
+size_mb = os.path.getsize(data_path) / (1024 * 1024)
+
+print("=== Основная информация о наборе данных ===")
+print(f"1️⃣ Размер набора данных: {size_mb:.2f} МБ")
+print(f"2️⃣ Количество записей: {len(df)}")
+print(f"3️⃣ Количество признаков: {len(df.columns)}")
+print(f"4️⃣ Целевая переменная: 'total_UPDRS' (тип: {df['total_UPDRS'].dtype})")
+print(f"5️⃣ Категориальный признак: 'sex' (бинарный 0/1)")
+print(f"6️⃣ Уникальных пациентов: {df['subject#'].nunique()}")
+print(f"7️⃣ Временной диапазон тестов: {df['test_time'].min()} → {df['test_time'].max()}")
+df.info()
+print("\n=== Пропущенные значения (по колонкам) ===")
+missing_cols = df.isnull().sum()
+missing_cols = missing_cols[missing_cols > 0]   # фильтруем только где есть пропуски
+print(missing_cols)
+
+print("\n=== Пропущенные значения (по строкам) ===")
+missing_rows = df.isnull().sum(axis=1)
+missing_rows = missing_rows[missing_rows > 0]   # фильтруем только строки с пропусками
+print(missing_rows)
+
+#### Наш датафрейм показывает, что он содержит 24 признака, при этом у одного признака — Jitter(Abs) — отсутствуют значения в 2931 записи из общего числа 5875. Соответствующие строки с пропущенными значениями отражены в разделе поиска пропусков по строкам. Наш набор данных включает 19 признаков типа float и 5 признаков типа integer, среди которых переменная sex является бинарным представлением (0 или 1).
+**Unnamed: 0, index и subject# (служебные идентификаторы, не несущие смысловой нагрузки)**
+
+print("=== Описательная статистика набора данных ===")
+display(df.describe(include="all"))
+
+##  Сводка по набору данных
+- **Размер набора данных**: 5875 записей, 24 признака.  
+- **Пациенты**: 42 уникальных пациента (`subject#` от 1 до 42).  
+- **Возраст**: 36–85 лет, среднее ≈ 65 лет.  
+- **Пол**: бинарный (0 = мужчина, 1 = женщина), около 32% женщин.  
+- **Время теста**: –4.26 → 215.49 (вероятно, дни/часы, зависит от определения в датасете).  
+
+###  Целевые переменные
+- `motor_UPDRS`: 5.03 – 39.51 (среднее ≈ 21.3).  
+  ⚠️ Будет исключена (оставляем одну целевую переменную).  
+- `total_UPDRS`: 7.0 – 54.99 (среднее ≈ 29.0).  
+
+### 🎙 Голосовые признаки
+- **Jitter, Shimmer, NHR, HNR, RPDE, DFA, PPE**: в основном малые значения (доли).  
+- Есть выбросы: `Jitter` до 0.0999, `Shimmer(dB)` до 2.107.  
+- **Jitter(Abs)**: имеет пропуски (только 2944 из 5875 заполнены).  
+
+### 📌 Ключевое наблюдение
+Набор данных хорошо структурирован с числовыми признаками.  
+Требуется особое внимание к пропускам в **Jitter(Abs)**  
+и корректной интерпретации **test_time** (масштаб/единицы).
+
+# === Удаление ненужных признаков ===
+cols_to_drop = ['motor_UPDRS', 'Unnamed: 0', 'index']
+existing_cols = [col for col in cols_to_drop if col in df.columns]
+
+if existing_cols:  # если такие колонки реально существуют
+    df = df.drop(columns=existing_cols)
+    print(f"\n✅ Удалены ненужные признаки: {existing_cols}")
+else:
+    print("\nℹ️ Ненужные признаки не найдены.")
+
+# === Статистика по пациентам с линией распределения ===
+subject_counts = df['subject#'].value_counts()
+mean_count = subject_counts.mean()
+min_count = subject_counts.min()
+max_count = subject_counts.max()
+
+plt.figure(figsize=(10,6))
+
+# Histogram
+n, bins, patches = plt.hist(subject_counts, bins=30, color="steelblue", edgecolor="black", alpha=0.7, density=True)
+
+# Overlay KDE line to show distribution type
+import seaborn as sns
+sns.kdeplot(subject_counts, color="darkred", linewidth=2)
+
+# Add vertical lines for min, mean, max
+plt.axvline(mean_count, color='green', linestyle='--', linewidth=2, label=f"Среднее: {mean_count:.2f}")
+plt.axvline(min_count, color='orange', linestyle=':', linewidth=2, label=f"Мин: {min_count}")
+plt.axvline(max_count, color='purple', linestyle=':', linewidth=2, label=f"Макс: {max_count}")
+
+plt.title("Распределение количества измерений по пациентам с линией плотности", fontsize=14)
+plt.xlabel("Количество измерений")
+plt.ylabel("Плотность")
+plt.legend()
+
+# Add text annotation below the histogram showing average range
+plt.figtext(0.15, -0.05, f"Среднее количество измерений: {mean_count:.2f} | Мин: {min_count}, Макс: {max_count}", fontsize=10)
+
+plt.show()
+
+# === Глобальный тренд total_UPDRS по времени ===
+# Tells you whether time is a strong predictor
+plt.figure(figsize=(10,6))
+df_grouped = df.groupby("test_time")["total_UPDRS"].mean()
+plt.plot(df_grouped.index, df_grouped.values, color="darkred")
+plt.title("Глобальный тренд total_UPDRS по времени тестирования", fontsize=14)
+plt.xlabel("Время тестирования")
+plt.ylabel("Среднее total_UPDRS")
+plt.grid(True)
+plt.show()
+
+print("")
+
+Слабый прогностический признак: Сам по себе test_time (время тестирования), скорее всего, будет слабым признаком для прогнозирования total_UPDRS в модели. Модель не может выучить последовательную взаимосвязь из этих данных.
+
+График показывает стабильную, но изменчивую среднюю тяжесть симптомов с течением времени, что указывает на необходимость искать хорошие предикторы оценок UPDRS за пределами простого временного фактора.
+# === Анализ корреляций ===
+# Features highly correlated with total_UPDRS are potential predictors.
+# Features highly correlated with each other may be redundant.
+# Helps with feature selection and avoiding multicollinearity.
+corr_matrix = df.corr()
+plt.figure(figsize=(10, 10))
+sns.heatmap(corr_matrix, annot=False, cmap='coolwarm', center=0)
+plt.title('Матрица корреляций признаков', fontsize=16)
+plt.tight_layout()
+plt.show()
+
+target_corr = corr_matrix['total_UPDRS'].sort_values(ascending=False)
+print("\n=== Корреляция признаков с total_UPDRS ===")
+print(target_corr)
+# === Сильно коррелирующие пары признаков (с комментариями) ===
+high_corr_records = []
+
+for i, col1 in enumerate(corr_matrix.columns):
+    for j, col2 in enumerate(corr_matrix.columns):
+        if i < j:  # избегаем дубликатов и самокорреляции
+            corr_val = corr_matrix.loc[col1, col2]
+            comment = (
+                "⚠️ Возможная избыточность (|корр| > 0.9)"
+                if abs(corr_val) > 0.9
+                else "Проблем избыточности нет"
+            )
+            high_corr_records.append((col1, col2, corr_val, comment))
+            
+# Конвертируем в DataFrame для красивого отображения
+high_corr_df = pd.DataFrame(
+    high_corr_records,
+    columns=["Признак 1", "Признак 2", "Корреляция", "Комментарий"]
+).sort_values(by="Корреляция", key=lambda x: abs(x), ascending=False)
+
+print("\n=== Таблица корреляций пар признаков ===")
+display(high_corr_df.head(20))  # показываем топ-20 самых сильных корреляций
+
+# Create combined features on a copy of the dataset
+shimmer_features = ['Shimmer', 'Shimmer(dB)', 'Shimmer:APQ3', 'Shimmer:APQ5', 'Shimmer:APQ11', 'Shimmer:DDA']
+jitter_features = ['Jitter(%)', 'Jitter(Abs)', 'Jitter:RAP', 'Jitter:PPQ5', 'Jitter:DDP']
+
+# Create a copy for analysis
+df_analysis = df.copy()
+
+# Create combined features on the copy
+df_analysis['jitter_combined'] = df_analysis[jitter_features].mean(axis=1)
+df_analysis['shimmer_combined'] = df_analysis[shimmer_features].mean(axis=1)
+
+# Perform correlation on the analysis dataset
+correlation = df_analysis.corr()
+plt.figure(figsize=(12, 10))
+plt.title("Correlation Matrix (Including Combined Features)")
+sns.heatmap(correlation, vmax=1, square=True, annot=False, cmap="YlGnBu")
+plt.tight_layout()
+plt.show()
+
+# Оставляем только объединенные версии и другие важные признаки
+features_to_keep = [
+    'subject#', 'age', 'sex', 'test_time', 'total_UPDRS',
+    'shimmer_combined', 'jitter_combined',
+    'NHR', 'HNR', 'RPDE', 'DFA', 'PPE'
+]
+
+df_combined = df_analysis[features_to_keep]
+
+# Выполняем корреляцию на новом наборе данных
+correlation = df_combined.corr()
+plt.figure(figsize=(10, 10))
+plt.title("Матрица корреляций с объединенными признаками")
+sns.heatmap(correlation, vmax=1, square=True, annot=True, cmap="YlGnBu", fmt='.2f')
+plt.tight_layout()
+plt.show()
+
+# Проверяем корреляцию с целевой переменной отдельно
+print("\n=== Корреляция с total_UPDRS (после объединения признаков) ===")
+target_corr_new = correlation['total_UPDRS'].sort_values(ascending=False)
+print(target_corr_new)
+
+
+# Проверяем оставшуюся мультиколлинеарность
+print("\n=== Проверка на мультиколлинеарность ===")
+# Ищем высокие корреляции между предикторами (исключая целевую и subject#)
+predictor_corr = correlation.drop(['total_UPDRS', 'subject#'], errors='ignore')
+predictor_corr = predictor_corr.drop(['total_UPDRS', 'subject#'], axis=1, errors='ignore')
+
+# Находим высокие корреляции между предикторами (абсолютное значение > 0.7)
+high_corr_pairs = []
+for i in range(len(predictor_corr.columns)):
+    for j in range(i+1, len(predictor_corr.columns)):
+        if abs(predictor_corr.iloc[i, j]) > 0.7:
+            high_corr_pairs.append((
+                predictor_corr.columns[i],
+                predictor_corr.columns[j],
+                predictor_corr.iloc[i, j]
+            ))
+
+if high_corr_pairs:
+    print("Обнаружены высокие корреляции (потенциальная мультиколлинеарность):")
+    for feature1, feature2, corr_value in high_corr_pairs:
+        print(f"  {feature1} - {feature2}: {corr_value:.3f}")
+else:
+    print("Значительной мультиколлинеарности не обнаружено (все корреляции < |0.7|)")
+
+# Проверяем силу наших новых объединенных признаков
+print(f"\nКорреляции объединенных признаков с целевой переменной:")
+print(f"shimmer_combined: {correlation.loc['shimmer_combined', 'total_UPDRS']:.3f}")
+print(f"jitter_combined: {correlation.loc['jitter_combined', 'total_UPDRS']:.3f}")
+
+**Краткое резюме:**
+
+В данных сохраняется **мультиколлинеарность** между акустическими признаками (shimmer_combined, jitter_combined, NHR, HNR), но мы решим эту проблему с помощью **winsorizing** для обработки выбросов, что особенно важно при уменьшенном количестве признаков.
+
+Что касается **низкой корреляции** shimmer_combined и jitter_combined с целевой переменной - это нормально. Хотя средние значения дают слабую линейную зависимость, в **LSTM и MLP моделях** эти признаки могут играть crucial роль благодаря:
+
+- **Неlinear interactions**, которые не видны в корреляционном анализе
+- **Временным паттернам**, которые раскрываются в последовательностях
+- **Комбинаторным эффектам** с другими признаками в скрытых слоях нейросетей
+
+**Таким образом:** Текущие метрики - лишь отправная точка, а настоящая сила признаков проявится в сложных моделях, учитывающих временные зависимости.
+
+# === Анализ распределений и асимметрии ===
+numeric_features = df_combined.select_dtypes(include=[np.number]).columns
+skew_kurt = pd.DataFrame({
+    "Асимметрия": df_combined[numeric_features].apply(lambda x: skew(x.dropna())),
+    "Эксцесс": df_combined[numeric_features].apply(lambda x: kurtosis(x.dropna()))
+})
+
+# Добавляем колонку со статусом рекомендаций
+def get_skewness_recommendation(skew_val, kurt_val):
+    recommendations = []
+    
+    # Рекомендации по асимметрии
+    if skew_val > 1:
+        recommendations.append("Нужно убрать крайне высокие значения")
+    elif skew_val > 0.5:
+        recommendations.append("Возможно убрать высокие выбросы")
+    elif skew_val < -1:
+        recommendations.append("Нужно убрать крайне низкие значения")
+    elif skew_val < -0.5:
+        recommendations.append("Возможно убрать низкие выбросы")
+    else:
+        recommendations.append("Асимметрия в норме")
+    
+    # Рекомендации по эксцессу
+    if kurt_val > 2:
+        recommendations.append("Много экстремальных значений - проверить выбросы")
+    elif kurt_val > 1:
+        recommendations.append("Возможны выбросы по краям")
+    elif kurt_val < -1:
+        recommendations.append("Равномерное распределение - хорошо")
+    else:
+        recommendations.append("Эксцесс в норме")
+    
+    return "\n".join(recommendations)
+
+skew_kurt["Рекомендации"] = skew_kurt.apply(
+    lambda row: get_skewness_recommendation(row["Асимметрия"], row["Эксцесс"]), 
+    axis=1
+)
+
+# Настраиваем отображение для полного показа текста
+pd.set_option('display.max_colwidth', None)
+pd.set_option('display.width', None)
+
+
+
+# Визуализация асимметрии на графике
+plt.figure(figsize=(12, 6))
+bars = plt.bar(skew_kurt.index, skew_kurt['Асимметрия'], color='skyblue', edgecolor='navy', alpha=0.7)
+
+# Добавляем цветовую индикацию для асимметрии
+for bar, skew_val in zip(bars, skew_kurt['Асимметрия']):
+    if abs(skew_val) > 1:  # Сильная асимметрия
+        bar.set_color('red')
+    elif abs(skew_val) > 0.5:  # Умеренная асимметрия
+        bar.set_color('orange')
+    else:  # Слабая асимметрия
+        bar.set_color('green')
+
+plt.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+plt.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, label='Умеренная асимметрия')
+plt.axhline(y=-0.5, color='gray', linestyle='--', alpha=0.5)
+plt.axhline(y=1, color='red', linestyle='--', alpha=0.5, label='Сильная асимметрия')
+plt.axhline(y=-1, color='red', linestyle='--', alpha=0.5)
+
+plt.title('Визуализация асимметрии числовых признаков', fontsize=14, fontweight='bold')
+plt.xlabel('Признаки')
+plt.ylabel('Коэффициент асимметрии')
+plt.xticks(rotation=45, ha='right')
+plt.legend()
+plt.grid(axis='y', alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+print("\n=== Асимметрия и эксцесс (числовые признаки) ===")
+
+display(skew_kurt)
+
+# Гистограммы с линиями асимметрии
+n_cols = 4
+n_rows = (len(numeric_features) + n_cols - 1) // n_cols
+
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 4*n_rows))
+axes = axes.flatten()
+
+for i, col in enumerate(numeric_features):
+    if i < len(axes):
+        # Гистограмма
+        axes[i].hist(df_combined[col].dropna(), bins=30, alpha=0.7, color='skyblue', edgecolor='black', density=True)
+        
+        # Линия среднего
+        mean_val = df_combined[col].mean()
+        axes[i].axvline(mean_val, color='red', linestyle='--', linewidth=2, label=f'Среднее: {mean_val:.2f}')
+        
+        # Линия медианы
+        median_val = df_combined[col].median()
+        axes[i].axvline(median_val, color='green', linestyle='--', linewidth=2, label=f'Медиана: {median_val:.2f}')
+        
+        # KDE
+        df_combined[col].dropna().plot.density(ax=axes[i], color='darkblue', linewidth=2)
+        
+        skew_val = skew_kurt.loc[col, 'Асимметрия']
+        axes[i].set_title(f'{col}\nАсимметрия: {skew_val:.2f}', fontsize=10)
+        axes[i].legend(fontsize=8)
+        
+        # Цвет заголовка в зависимости от асимметрии
+        if abs(skew_val) > 1:
+            axes[i].title.set_color('red')
+        elif abs(skew_val) > 0.5:
+            axes[i].title.set_color('orange')
+
+# Скрываем пустые subplots
+for j in range(len(numeric_features), len(axes)):
+    axes[j].set_visible(False)
+
+plt.suptitle("Распределения числовых признаков с визуализацией асимметрии", fontsize=16, fontweight='bold')
+plt.tight_layout()
+plt.show()
+
+# Ядерные оценки плотности для ключевых признаков
+key_features = ['total_UPDRS', 'shimmer_combined', 'jitter_combined', 'HNR', 'NHR', 'age']
+plt.figure(figsize=(14, 8))
+for col in key_features:
+    if col in df_combined.columns:
+        sns.kdeplot(df_combined[col].dropna(), label=f'{col} (асимметрия: {skew_kurt.loc[col, "Асимметрия"]:.2f})')
+plt.title("Ядерные оценки плотности ключевых признаков", fontsize=14, fontweight='bold')
+plt.xlabel("Значения")
+plt.ylabel("Плотность")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.show()
+
+# Сводка по асимметрии
+print("\n=== Сводка по асимметрии ===")
+strong_skew = skew_kurt[abs(skew_kurt['Асимметрия']) > 1]
+moderate_skew = skew_kurt[(abs(skew_kurt['Асимметрия']) > 0.5) & (abs(skew_kurt['Асимметрия']) <= 1)]
+
+if not strong_skew.empty:
+    print("Признаки с СИЛЬНОЙ асимметрией (> |1|):")
+    print(strong_skew['Асимметрия'])
+    
+if not moderate_skew.empty:
+    print("\nПризнаки с УМЕРЕННОЙ асимметрией (0.5 < |x| ≤ 1):")
+    print(moderate_skew['Асимметрия'])
+
+normal_skew = skew_kurt[abs(skew_kurt['Асимметрия']) <= 0.5]
+if not normal_skew.empty:
+    print(f"\nПризнаки с нормальным распределением (асимметрия ≤ |0.5|): {len(normal_skew)}")
+
+
+
+# === Обнаружение выбросов методом IQR ===
+print("\n=== Обнаружение выбросов (метод IQR) ===")
+outlier_summary = []
+
+features_to_check = [
+    'subject#', 'age', 'sex', 'test_time', 'total_UPDRS',
+    'shimmer_combined', 'jitter_combined', 'NHR', 'HNR', 'RPDE', 'DFA', 'PPE'
+]
+
+for col in features_to_check:
+    Q1 = df_combined[col].quantile(0.25)
+    Q3 = df_combined[col].quantile(0.75)
+    IQR = Q3 - Q1
+    lower = Q1 - 1.5 * IQR
+    upper = Q3 + 1.5 * IQR
+    n_outliers = ((df_combined[col] < lower) | (df_combined[col] > upper)).sum()
+    total_rows = len(df_combined)
+    outlier_percentage = (n_outliers / total_rows) * 100
+    
+    # Определяем уровень проблемы
+    if outlier_percentage > 20:
+        status = "🚨 КРИТИЧЕСКИЙ УРОВЕНЬ"
+        recommendation = "Требуется winsorizing/удаление выбросов"
+    elif outlier_percentage > 10:
+        status = "⚠️ ВЫСОКИЙ УРОВЕНЬ"
+        recommendation = "Рекомендуется обработка выбросов"
+    elif outlier_percentage > 5:
+        status = "🔶 УМЕРЕННЫЙ УРОВЕНЬ"
+        recommendation = "Рассмотреть обработку выбросов"
+    else:
+        status = "✅ НОРМА"
+        recommendation = "Обработка не требуется"
+    
+    outlier_summary.append({
+        'Признак': col,
+        'Кол-во выбросов': n_outliers,
+        '% выбросов': f"{outlier_percentage:.1f}%",
+        'Статус': status,
+        'Рекомендация': recommendation,
+        'Границы IQR': f"[{lower:.2f}, {upper:.2f}]"
+    })
+
+outlier_df = pd.DataFrame(outlier_summary)
+display(outlier_df.sort_values("Кол-во выбросов", ascending=False))
+
+# Боксплоты для выбранных признаков из df_combined
+plt.figure(figsize=(14, 8))
+features_for_boxplot = ['total_UPDRS', 'jitter_combined', 'shimmer_combined', 'HNR']
+for i, col in enumerate(features_for_boxplot):
+    plt.subplot(2, 2, i+1)
+    sns.boxplot(x=df_combined[col], color="skyblue")
+    plt.title(f"Боксплот {col}")
+plt.tight_layout()
+plt.show()
+
+
+### total_UPDRS ✅
+Распределение: Сбалансированное, нормальное - Целевая переменная хорошо распределена
+
+### jitter_combined 🚨
+Сильно смещено вправо -ОЧЕНЬ МНОГО - подтверждает наш IQR анализ (419 выбросов). 
+Проблема: Большинство значений сконцентрировано внизу, но есть экстремальные выбросы. 
+Заключение: Требуется срочная обработка winsorizing
+
+### shimmer_combined 🚨
+Распределение: Аналогично jitter - сильно смещено вправо -МНОГО - подтверждает 327 выбросов из IQR
+Проблема: Та же картина - компактное ядро + длинный хвост выбросов
+Заключение: Необходима обработка winsorizing
+
+### HNR ⚠️
+Распределение: Более сбалансированное, но с выбросами
+Выбросы: Умеренное количество (подтверждает 171 выброс)
+Медиана: ~20-25 единиц
+Особенность: Выбросы в основном в нижней части
+Заключение: Рекомендуется обработка
+
+НЕОБХОДИМЫЕ ДЕЙСТВИЯ:
+
+1. СРОЧНО: Применить winsorizing к:
+   - jitter_combined (критический уровень)
+   - shimmer_combined (критический уровень)
+
+2. РЕКОМЕНДУЕТСЯ: Обработать HNR
+
+3. БЕЗ ИЗМЕНЕНИЙ: total_UPDRS в отличном состоянии
+
+📌 Почему это важно: Выбросы в jitter и shimmer могут доминировать 
+   в обучении модели и искажать результаты!
+""")
+# === Диаграммы рассеяния: целевая переменная vs выбранные признаки ===
+top_features = ['age', 'HNR', 'NHR']
+plt.figure(figsize=(15, 5))
+for i, feat in enumerate(top_features):
+    plt.subplot(1, 3, i+1)
+    sns.scatterplot(x=df_combined[feat], y=df_combined['total_UPDRS'], alpha=0.5)
+    plt.title(f'total_UPDRS vs {feat}')
+plt.tight_layout()
+plt.show()
+
+# === Временные тренды для нескольких пациентов ===
+subject_sample = np.random.choice(df_combined['subject#'].unique(), 4, replace=False)
+plt.figure(figsize=(12, 8))
+for i, subject in enumerate(subject_sample):
+    subject_data = df_combined[df_combined['subject#'] == subject].sort_values('test_time')
+    plt.subplot(2, 2, i+1)
+    plt.plot(subject_data['test_time'], subject_data['total_UPDRS'], marker='o', linestyle='-')
+    plt.title(f'Пациент {subject}', fontsize=12)
+    plt.xlabel('Время тестирования')
+    plt.ylabel('total_UPDRS')
+plt.tight_layout()
+plt.show()
+
+📈 ОБЩАЯ КАРТИНА:
+   - Ни один признак не показывает сильной линейной связи с UPDRS
+   - Это подтверждает необходимость сложных моделей (LSTM/MLP)
+   - Взаимодействия признаков могут быть важнее индивидуальных связей
+
+print("=" * 80)
+print("B. ПОДГОТОВКА ДАННЫХ - TWO DATASET APPROACH")
+print("=" * 80)
+
+# Создаем две рабочие копии для разных версий
+df_full = df.copy()  # For versions 1 & 2
+df_reduced = df_combined.copy()  # For versions 3 & 4
+
+print("📊 ИСХОДНЫЕ ДАТАСЕТЫ:")
+print(f"df_full: {df_full.shape}")
+print(f"df_reduced: {df_reduced.shape}")
+
+print("\nB.1 УДАЛЕНИЕ СТОЛБЦОВ")
+print("-" * 40)
+
+columns_to_remove = ['motor_UPDRS', 'index', 'subject#', 'Unnamed: 0']
+
+for df_name, dataset in [('df_full', df_full), ('df_reduced', df_reduced)]:
+    print(f"\nОбработка {df_name}:")
+    original_shape = dataset.shape
+    for col in columns_to_remove:
+        if col in dataset.columns:
+            dataset.drop(col, axis=1, inplace=True)
+            print(f"  ✅ Удален '{col}'")
+    print(f"  Размер: {original_shape} → {dataset.shape}")
+
+print("\nB.2 АНАЛИЗ F-SCORE (SELECTKBEST)")
+print("-" * 40)
+
+def analyze_feature_importance(df, df_name):
+    """Анализирует важность признаков с помощью SelectKBest"""
+    print(f"\n📊 АНАЛИЗ F-SCORE ДЛЯ {df_name}:")
+    
+    # Подготовка данных
+    X = df.drop('total_UPDRS', axis=1)
+    y = df['total_UPDRS']
+    
+    # Кодируем категориальные признаки
+    if 'sex' in X.columns and X['sex'].dtype == 'object':
+        X['sex'] = X['sex'].astype('category').cat.codes
+    
+    # Заполняем пропущенные значения медианой для анализа
+    if X.isnull().sum().sum() > 0:
+        X_filled = X.fillna(X.median())
+    else:
+        X_filled = X.copy()
+    
+    # Применяем SelectKBest
+    k_best = SelectKBest(score_func=f_regression, k='all')
+    k_best.fit(X_filled, y)
+    
+    # Создаем DataFrame с результатами
+    feature_importance = pd.DataFrame({
+        'Feature': X.columns,
+        'F_Score': k_best.scores_,
+        'P_Value': k_best.pvalues_
+    }).sort_values('F_Score', ascending=False)
+    
+    return feature_importance
+
+# Анализируем оба датасета
+feature_importance_full = analyze_feature_importance(df_full, 'df_full')
+feature_importance_reduced = analyze_feature_importance(df_reduced, 'df_reduced')
+
+# Визуализация F-Score для обоих датасетов
+fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+# df_full - Top features
+top_full = feature_importance_full.head(15)
+colors_full = ['red' if pval < 0.05 else 'blue' for pval in top_full['P_Value']]
+axes[0, 0].barh(top_full['Feature'], top_full['F_Score'], color=colors_full, alpha=0.7)
+axes[0, 0].set_title('df_full -ТОП 15 ПРИЗНАКОВ ПО F-SCORE')
+axes[0, 0].set_xlabel('F-Score')
+axes[0, 0].invert_yaxis()
+axes[0, 0].grid(axis='x', alpha=0.3)
+
+# df_full - Все признаки
+all_full = feature_importance_full.sort_values('F_Score', ascending=True)
+colors_all_full = ['red' if pval < 0.05 else 'blue' for pval in all_full['P_Value']]
+axes[0, 1].barh(all_full['Feature'], all_full['F_Score'], color=colors_all_full, alpha=0.7)
+axes[0, 1].set_title('df_full - ВСЕ ПРИЗНАКИ ПО F-SCORE')
+axes[0, 1].set_xlabel('F-Score')
+axes[0, 1].grid(axis='x', alpha=0.3)
+
+# df_reduced - Top features
+top_reduced = feature_importance_reduced.head(8)
+colors_reduced = ['red' if pval < 0.05 else 'blue' for pval in top_reduced['P_Value']]
+axes[1, 0].barh(top_reduced['Feature'], top_reduced['F_Score'], color=colors_reduced, alpha=0.7)
+axes[1, 0].set_title('df_reduced - ТОП 8 ПРИЗНАКОВ ПО F-SCORE')
+axes[1, 0].set_xlabel('F-Score')
+axes[1, 0].invert_yaxis()
+axes[1, 0].grid(axis='x', alpha=0.3)
+
+# df_reduced - Все признаки
+all_reduced = feature_importance_reduced.sort_values('F_Score', ascending=True)
+colors_all_reduced = ['red' if pval < 0.05 else 'blue' for pval in all_reduced['P_Value']]
+axes[1, 1].barh(all_reduced['Feature'], all_reduced['F_Score'], color=colors_all_reduced, alpha=0.7)
+axes[1, 1].set_title('df_reduced - ВСЕ ПРИЗНАКИ ПО F-SCORE')
+axes[1, 1].set_xlabel('F-Score')
+axes[1, 1].grid(axis='x', alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+print("\n📈 ПОЛНЫЕ РЕЗУЛЬТАТЫ F-SCORE:")
+print("=" * 60)
+
+print("\ndf_full - ВСЕ ПРИЗНАКИ:")
+print("-" * 40)
+for i, (_, row) in enumerate(feature_importance_full.iterrows(), 1):
+    significance = "✅ значим" if row['P_Value'] < 0.05 else "⚠️ незначим"
+    print(f"{i:2d}. {row['Feature']:25} F-score = {row['F_Score']:7.1f} p-value = {row['P_Value']:8.4f} ({significance})")
+
+print("\ndf_reduced - ВСЕ ПРИЗНАКИ:")
+print("-" * 40)
+for i, (_, row) in enumerate(feature_importance_reduced.iterrows(), 1):
+    significance = "✅ значим" if row['P_Value'] < 0.05 else "⚠️ незначим"
+    print(f"{i:2d}. {row['Feature']:25} F-score = {row['F_Score']:7.1f} p-value = {row['P_Value']:8.4f} ({significance})")
+
+print("\nB.3 АНАЛИЗ ПРОПУЩЕННЫХ ЗНАЧЕНИЙ И РЕЛЕВАНТНОСТИ")
+print("-" * 40)
+
+def analyze_missing_values(df, df_name, feature_importance):
+    """Анализирует пропущенные значения и их релевантность"""
+    print(f"\n🔍 АНАЛИЗ ПРОПУЩЕННЫХ ЗНАЧЕНИЙ ДЛЯ {df_name}:")
+    
+    # Анализ пропущенных значений
+    missing_data = df.isnull().sum()
+    missing_data = missing_data[missing_data > 0]
+    
+    if len(missing_data) == 0:
+        print("  ✅ Пропущенных значений не обнаружено")
+        return
+    
+    print("  Обнаружены пропущенные значения:")
+    for col, missing_count in missing_data.items():
+        missing_percent = (missing_count / len(df)) * 100
+        
+        # Проверяем релевантность признака
+        if col in feature_importance['Feature'].values:
+            f_score = feature_importance[feature_importance['Feature'] == col]['F_Score'].values[0]
+            p_value = feature_importance[feature_importance['Feature'] == col]['P_Value'].values[0]
+            relevance = "✅ ВЫСОКАЯ" if f_score > 10 else "⚠️ СРЕДНЯЯ" if f_score > 5 else "❌ НИЗКАЯ"
+        else:
+            f_score = 0
+            p_value = 1
+            relevance = "❌ НЕ ОЦЕНЕН"
+        
+        print(f"    {col}: {missing_count} пропусков ({missing_percent:.1f}%)")
+        print(f"      Релевантность: {relevance}, F-score: {f_score:.1f}, p-value: {p_value:.4f}")
+        
+        # Рекомендации по обработке
+        if missing_percent > 20:
+            print(f"      🚨 РЕКОМЕНДАЦИЯ: МНОГО ПРОПУСКОВ (>20%) - вероятно MNAR(Missing Not at Random)")
+            if relevance == "✅ ВЫСОКАЯ":
+                print(f"      💡 ДЕЙСТВИЕ: Использовать продвинутую импутацию (KNN/Regression)")
+            else:
+                print(f"      💡 ДЕЙСТВИЕ: Рассмотреть удаление признака")
+        elif missing_percent > 5:
+            print(f"      ⚠️  РЕКОМЕНДАЦИЯ: УМЕРЕННО ПРОПУСКОВ (5-20%) - вероятно MAR(Missing at Random)")
+            print(f"      💡 ДЕЙСТВИЕ: Использовать KNN импутацию")
+        else:
+            print(f"      ✅ РЕКОМЕНДАЦИЯ: МАЛО ПРОПУСКОВ (<5%) - вероятно MCAR(Missing Completely at Random)")
+            print(f"      💡 ДЕЙСТВИЕ: Использовать простую импутацию (медиана/среднее)")
+
+# Анализируем пропущенные значения для обоих датасетов
+analyze_missing_values(df_full, 'df_full', feature_importance_full)
+analyze_missing_values(df_reduced, 'df_reduced', feature_importance_reduced)
+
+print("\nB.3 АНАЛИЗ ПРОПУЩЕННЫХ ЗНАЧЕНИЙ И РЕЛЕВАНТНОСТИ")
+print("-" * 40)
+
+def analyze_missing_values(df, df_name, feature_importance):
+    """Анализирует пропущенные значения и их релевантность"""
+    print(f"\n🔍 АНАЛИЗ ПРОПУЩЕННЫХ ЗНАЧЕНИЙ ДЛЯ {df_name}:")
+    
+    # Анализ пропущенных значений
+    missing_data = df.isnull().sum()
+    missing_data = missing_data[missing_data > 0]
+    
+    if len(missing_data) == 0:
+        print("  ✅ Пропущенных значений не обнаружено")
+        return
+    
+    print("  Обнаружены пропущенные значения:")
+    for col, missing_count in missing_data.items():
+        missing_percent = (missing_count / len(df)) * 100
+        
+        # Проверяем релевантность признака
+        if col in feature_importance['Feature'].values:
+            f_score = feature_importance[feature_importance['Feature'] == col]['F_Score'].values[0]
+            p_value = feature_importance[feature_importance['Feature'] == col]['P_Value'].values[0]
+            relevance = "✅ ВЫСОКАЯ" if f_score > 10 else "⚠️ СРЕДНЯЯ" if f_score > 5 else "❌ НИЗКАЯ"
+        else:
+            f_score = 0
+            p_value = 1
+            relevance = "❌ НЕ ОЦЕНЕН"
+        
+        print(f"    {col}: {missing_count} пропусков ({missing_percent:.1f}%)")
+        print(f"      Релевантность: {relevance}, F-score: {f_score:.1f}, p-value: {p_value:.4f}")
+        
+        # Рекомендации по обработке
+        if missing_percent > 20:
+            print(f"      🚨 РЕКОМЕНДАЦИЯ: МНОГО ПРОПУСКОВ (>20%) - вероятно MNAR(Missing Not at Random)")
+            if relevance == "✅ ВЫСОКАЯ":
+                print(f"      💡 ДЕЙСТВИЕ: Использовать продвинутую импутацию (KNN/Regression)")
+            else:
+                print(f"      💡 ДЕЙСТВИЕ: Рассмотреть удаление признака")
+        elif missing_percent > 5:
+            print(f"      ⚠️  РЕКОМЕНДАЦИЯ: УМЕРЕННО ПРОПУСКОВ (5-20%) - вероятно MAR(Missing at Random)")
+            print(f"      💡 ДЕЙСТВИЕ: Использовать KNN импутацию")
+        else:
+            print(f"      ✅ РЕКОМЕНДАЦИЯ: МАЛО ПРОПУСКОВ (<5%) - вероятно MCAR(Missing Completely at Random)")
+            print(f"      💡 ДЕЙСТВИЕ: Использовать простую импутацию (медиана/среднее)")
+
+# Анализируем пропущенные значения для обоих датасетов
+analyze_missing_values(df_full, 'df_full', feature_importance_full)
+analyze_missing_values(df_reduced, 'df_reduced', feature_importance_reduced)
+
+if 'Jitter(Abs)' in df_full.columns:
+    df_full = df_full.drop('Jitter(Abs)', axis=1)
+    print("✅ Jitter(Abs) удален из df_full (49.9% пропусков)")
+
+print("\nB.4 ОБРАБОТКА ВЫБРОСОВ (WINSORIZE)")
+print("-" * 40)
+
+def apply_winsorizing(df, df_name):
+    """Применяет winsorizing к числовым признакам"""
+    print(f"\n🔧 WINSORIZING ДЛЯ {df_name}:")
+    
+    # Выбираем только числовые признаки (исключая целевую и категориальные)
+    numeric_features = df.select_dtypes(include=[np.number]).columns
+    numeric_features = [col for col in numeric_features if col != 'total_UPDRS' and col != 'sex']
+    
+    for feature in numeric_features:
+        original_skew = df[feature].skew()
+        # Winsorize верхние и нижние 2%
+        df[feature] = winsorize(df[feature], limits=[0.02, 0.02])
+        new_skew = df[feature].skew()
+        
+        if abs(original_skew - new_skew) > 0.5:  # Если асимметрия значительно улучшилась
+            print(f"  ✅ {feature}: асимметрия {original_skew:.2f} → {new_skew:.2f}")
+
+# Применяем winsorizing к обоим датасетам
+apply_winsorizing(df_full, 'df_full')
+apply_winsorizing(df_reduced, 'df_reduced')
+
+B.4 ОБРАБОТКА ВЫБРОСОВ (WINSORIZE)
+----------------------------------------
+
+🔧 WINSORIZING ДЛЯ df_full:
+  ✅ Jitter(%): асимметрия 6.45 → 2.28
+  ✅ Jitter:RAP: асимметрия 6.95 → 2.32
+  ✅ Jitter:PPQ5: асимметрия 7.59 → 2.43
+  ✅ Jitter:DDP: асимметрия 6.95 → 2.31
+  ✅ Shimmer: асимметрия 3.31 → 2.21
+  ✅ Shimmer(dB): асимметрия 3.10 → 2.21
+  ✅ Shimmer:APQ3: асимметрия 3.10 → 1.89
+  ✅ Shimmer:APQ5: асимметрия 3.70 → 2.20
+  ✅ Shimmer:APQ11: асимметрия 3.41 → 1.92
+  ✅ Shimmer:DDA: асимметрия 3.10 → 1.89
+  ✅ NHR: асимметрия 6.55 → 3.50
+
+🔧 WINSORIZING ДЛЯ df_reduced:
+  ✅ shimmer_combined: асимметрия 3.10 → 2.12
+  ✅ jitter_combined: асимметрия 6.88 → 2.38
+  ✅ NHR: асимметрия 6.55 → 3.50
+
+
+print("\nB.5 ПРОВЕРКА МУЛЬТИКОЛЛИНЕАРНОСТИ")
+print("-" * 40)
+
+def check_multicollinearity(df, df_name):
+    """Проверяет мультиколлинеарность после обработки"""
+    print(f"\n🔍 ПРОВЕРКА МУЛЬТИКОЛЛИНЕАРНОСТИ ДЛЯ {df_name}:")
+    
+    # Удаляем целевую переменную для анализа
+    X = df.drop('total_UPDRS', axis=1)
+    
+    # УДАЛЯЕМ Jitter(Abs) из df_full как рекомендовано
+    if df_name == 'df_full' and 'Jitter(Abs)' in X.columns:
+        X = X.drop('Jitter(Abs)', axis=1)
+        print("✅ Jitter(Abs) удален из анализа (49.9% пропусков)")
+    
+    # Вычисляем корреляционную матрицу
+    corr_matrix = X.corr().abs()
+    
+    # Находим высококоррелированные пары
+    high_corr_pairs = []
+    for i in range(len(corr_matrix.columns)):
+        for j in range(i+1, len(corr_matrix.columns)):
+            if corr_matrix.iloc[i, j] > 0.8:  # Порог 0.8 для сильной корреляции
+                col1, col2 = corr_matrix.columns[i], corr_matrix.columns[j]
+                corr_value = corr_matrix.iloc[i, j]
+                high_corr_pairs.append((col1, col2, corr_value))
+    
+    # Сортируем по силе корреляции
+    high_corr_pairs.sort(key=lambda x: x[2], reverse=True)
+    
+    if high_corr_pairs:
+        print(f"🚨 Обнаружено {len(high_corr_pairs)} высококоррелированных пар (corr > 0.8):")
+        for col1, col2, corr_value in high_corr_pairs:
+            print(f"  {col1} - {col2}: {corr_value:.3f}")
+    else:
+        print("✅ Высококоррелированных пар не обнаружено (corr < 0.8)")
+    
+    return high_corr_pairs
+
+# Проверяем мультиколлинеарность для обоих датасетов
+multicollinearity_full = check_multicollinearity(df_full, 'df_full')
+multicollinearity_reduced = check_multicollinearity(df_reduced, 'df_reduced')
+
+print("\nB.6 РАЗДЕЛЕНИЕ НА ВЫБОРКИ")
+print("-" * 40)
+
+def create_train_val_test_splits(df, test_size=0.2, val_size=0.2, random_state=42):
+    """Создает разделенные выборки"""
+    X = df.drop('total_UPDRS', axis=1)
+    y = df['total_UPDRS']
+    
+    # Первое разделение: временная и тестовая
+    X_temp, X_test, y_temp, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=random_state, shuffle=True
+    )
+    
+    # Второе разделение: обучающая и валидационная
+    val_relative_size = val_size / (1 - test_size)
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_temp, y_temp, test_size=val_relative_size, random_state=random_state, shuffle=True
+    )
+    
+    return X_train, X_val, X_test, y_train, y_val, y_test
+
+# Создаем разделенные выборки для обоих датасетов
+print("Создание разделенных выборок...")
+
+X_train_full, X_val_full, X_test_full, y_train_full, y_val_full, y_test_full = create_train_val_test_splits(df_full)
+X_train_red, X_val_red, X_test_red, y_train_red, y_val_red, y_test_red = create_train_val_test_splits(df_reduced)
+
+print("✅ Разделенные выборки созданы:")
+print(f"  df_full: train={X_train_full.shape[0]}, val={X_val_full.shape[0]}, test={X_test_full.shape[0]}")
+print(f"  df_reduced: train={X_train_red.shape[0]}, val={X_val_red.shape[0]}, test={X_test_red.shape[0]}")
+
+
+B.6 РАЗДЕЛЕНИЕ НА ВЫБОРКИ
+----------------------------------------
+Создание разделенных выборок...
+✅ Разделенные выборки созданы:
+  df_full: train=3525, val=1175, test=1175
+  df_reduced: train=3525, val=1175, test=1175
+
+print("\nB.7 ПРОВЕРКА НА ПРОПУЩЕННЫЕ ЗНАЧЕНИЯ")
+print("-" * 40)
+
+# Проверяем, что все пропуски устранены
+print("Проверка пропущенных значений в выборках:")
+
+print(f"\ndf_full:")
+print(f"  X_train: {X_train_full.isnull().sum().sum()} пропусков")
+print(f"  X_val: {X_val_full.isnull().sum().sum()} пропусков")
+print(f"  X_test: {X_test_full.isnull().sum().sum()} пропусков")
+
+print(f"\ndf_reduced:")
+print(f"  X_train: {X_train_red.isnull().sum().sum()} пропусков")
+print(f"  X_val: {X_val_red.isnull().sum().sum()} пропусков")
+print(f"  X_test: {X_test_red.isnull().sum().sum()} пропусков")
+
+
+B.7 ПРОВЕРКА НА ПРОПУЩЕННЫЕ ЗНАЧЕНИЯ
+----------------------------------------
+Проверка пропущенных значений в выборках:
+
+df_full:
+  X_train: 0 пропусков
+  X_val: 0 пропусков
+  X_test: 0 пропусков
+
+df_reduced:
+  X_train: 0 пропусков
+  X_val: 0 пропусков
+  X_test: 0 пропусков
+
+# Подготавливаем данные для B.8 (просто переименовываем переменные)
+X_train_full_imp = X_train_full
+X_val_full_imp = X_val_full
+X_test_full_imp = X_test_full
+
+X_train_red_imp = X_train_red
+X_val_red_imp = X_val_red
+X_test_red_imp = X_test_red
+
+# =============================================================================
+# B.8 СОЗДАНИЕ СТАНДАРТИЗИРОВАННЫХ ВЕРСИЙ
+# =============================================================================
+
+print("\nB.8 СОЗДАНИЕ СТАНДАРТИЗИРОВАННЫХ ВЕРСИЙ")
+print("-" * 40)
+
+def apply_standard_scaling(X_train, X_val, X_test):
+    """Применяет стандартизацию"""
+    scaler = StandardScaler()
+    
+    # Fit ТОЛЬКО на обучающих данных
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_train_scaled = pd.DataFrame(X_train_scaled, columns=X_train.columns, index=X_train.index)
+    
+    # Transform на валидационных и тестовых данных
+    X_val_scaled = scaler.transform(X_val)
+    X_val_scaled = pd.DataFrame(X_val_scaled, columns=X_val.columns, index=X_val.index)
+    
+    X_test_scaled = scaler.transform(X_test)
+    X_test_scaled = pd.DataFrame(X_test_scaled, columns=X_test.columns, index=X_test.index)
+    
+    return X_train_scaled, X_val_scaled, X_test_scaled, scaler
+
+print("Создание 4 вариантов датасетов...")
+
+# 1. Полный набор (без стандартизации)
+dataset1 = {
+    'X_train': X_train_full_imp, 'X_val': X_val_full_imp, 'X_test': X_test_full_imp,
+    'y_train': y_train_full, 'y_val': y_val_full, 'y_test': y_test_full,
+    'name': 'Полный набор (без стандартизации)',
+    'features': X_train_full_imp.columns.tolist(),
+    'source': 'df_full'
+}
+
+# 2. Полный набор + стандартизация
+X_train_full_std, X_val_full_std, X_test_full_std, scaler_full = apply_standard_scaling(
+    X_train_full_imp, X_val_full_imp, X_test_full_imp)
+dataset2 = {
+    'X_train': X_train_full_std, 'X_val': X_val_full_std, 'X_test': X_test_full_std,
+    'y_train': y_train_full, 'y_val': y_val_full, 'y_test': y_test_full,
+    'name': 'Полный набор + стандартизация',
+    'features': X_train_full_std.columns.tolist(),
+    'scaler': scaler_full,
+    'source': 'df_full'
+}
+
+# 3. Сокращенный набор (без стандартизации)
+dataset3 = {
+    'X_train': X_train_red_imp, 'X_val': X_val_red_imp, 'X_test': X_test_red_imp,
+    'y_train': y_train_red, 'y_val': y_val_red, 'y_test': y_test_red,
+    'name': 'Сокращенный набор (без стандартизации)',
+    'features': X_train_red_imp.columns.tolist(),
+    'source': 'df_reduced'
+}
+
+# 4. Сокращенный набор + стандартизация
+X_train_red_std, X_val_red_std, X_test_red_std, scaler_red = apply_standard_scaling(
+    X_train_red_imp, X_val_red_imp, X_test_red_imp)
+dataset4 = {
+    'X_train': X_train_red_std, 'X_val': X_val_red_std, 'X_test': X_test_red_std,
+    'y_train': y_train_red, 'y_val': y_val_red, 'y_test': y_test_red,
+    'name': 'Сокращенный набор + стандартизация',
+    'features': X_train_red_std.columns.tolist(),
+    'scaler': scaler_red,
+    'source': 'df_reduced'
+}
+
+# Сохраняем все датасеты
+datasets = {
+    'full': dataset1,
+    'full_std': dataset2, 
+    'reduced': dataset3,
+    'reduced_std': dataset4
+}
+
+print("\n📋 ФИНАЛЬНАЯ СВОДКА:")
+for key, dataset in datasets.items():
+    print(f"\n{dataset['name']}:")
+    print(f"  • Признаков: {len(dataset['features'])}")
+    print(f"  • Размеры: train={dataset['X_train'].shape}, val={dataset['X_val'].shape}, test={dataset['X_test'].shape}")
+    print(f"  • Признаки: {dataset['features']}")
+
+B.8 СОЗДАНИЕ СТАНДАРТИЗИРОВАННЫХ ВЕРСИЙ
+----------------------------------------
+Создание 4 вариантов датасетов...
+
+📋 ФИНАЛЬНАЯ СВОДКА:
+
+Полный набор (без стандартизации):
+  • Признаков: 18
+  • Размеры: train=(3525, 18), val=(1175, 18), test=(1175, 18)
+  • Признаки: ['age', 'sex', 'test_time', 'Jitter(%)', 'Jitter:RAP', 'Jitter:PPQ5', 'Jitter:DDP', 'Shimmer', 'Shimmer(dB)', 'Shimmer:APQ3', 'Shimmer:APQ5', 'Shimmer:APQ11', 'Shimmer:DDA', 'NHR', 'HNR', 'RPDE', 'DFA', 'PPE']
+
+Полный набор + стандартизация:
+  • Признаков: 18
+  • Размеры: train=(3525, 18), val=(1175, 18), test=(1175, 18)
+  • Признаки: ['age', 'sex', 'test_time', 'Jitter(%)', 'Jitter:RAP', 'Jitter:PPQ5', 'Jitter:DDP', 'Shimmer', 'Shimmer(dB)', 'Shimmer:APQ3', 'Shimmer:APQ5', 'Shimmer:APQ11', 'Shimmer:DDA', 'NHR', 'HNR', 'RPDE', 'DFA', 'PPE']
+
+Сокращенный набор (без стандартизации):
+  • Признаков: 10
+  • Размеры: train=(3525, 10), val=(1175, 10), test=(1175, 10)
+  • Признаки: ['age', 'sex', 'test_time', 'shimmer_combined', 'jitter_combined', 'NHR', 'HNR', 'RPDE', 'DFA', 'PPE']
+
+Сокращенный набор + стандартизация:
+  • Признаков: 10
+  • Размеры: train=(3525, 10), val=(1175, 10), test=(1175, 10)
+  • Признаки: ['age', 'sex', 'test_time', 'shimmer_combined', 'jitter_combined', 'NHR', 'HNR', 'RPDE', 'DFA', 'PPE']
+
+# =============================================================================
+# B.9 ПОДГОТОВКА ДЛЯ НЕЙРОСЕТЕЙ (MLP, CNN, LSTM)
+# =============================================================================
+
+print("\nB.9 ПОДГОТОВКА ДЛЯ НЕЙРОСЕТЕЙ")
+print("-" * 40)
+
+# Преобразуем данные в NumPy arrays для TensorFlow/Keras
+for key in datasets.keys():
+    dataset = datasets[key]
+    
+    # Преобразуем в numpy arrays для MLP
+    dataset['X_train_array'] = dataset['X_train'].values.astype('float32')
+    dataset['X_val_array'] = dataset['X_val'].values.astype('float32')
+    dataset['X_test_array'] = dataset['X_test'].values.astype('float32')
+    dataset['y_train_array'] = dataset['y_train'].values.astype('float32')
+    dataset['y_val_array'] = dataset['y_val'].values.astype('float32')
+    dataset['y_test_array'] = dataset['y_test'].values.astype('float32')
+    
+    # Преобразуем для 1D CNN (добавляем dimension для каналов)
+    dataset['X_train_cnn'] = dataset['X_train_array'].reshape(dataset['X_train_array'].shape[0], 
+                                                             dataset['X_train_array'].shape[1], 1)
+    dataset['X_val_cnn'] = dataset['X_val_array'].reshape(dataset['X_val_array'].shape[0], 
+                                                         dataset['X_val_array'].shape[1], 1)
+    dataset['X_test_cnn'] = dataset['X_test_array'].reshape(dataset['X_test_array'].shape[0], 
+                                                           dataset['X_test_array'].shape[1], 1)
+    
+    print(f"✅ {key}:")
+    print(f"   MLP arrays: {dataset['X_train_array'].shape}")
+    print(f"   CNN arrays: {dataset['X_train_cnn'].shape}")
+
+
+B.9 ПОДГОТОВКА ДЛЯ НЕЙРОСЕТЕЙ
+----------------------------------------
+✅ full:
+   MLP arrays: (3525, 18)
+   CNN arrays: (3525, 18, 1)
+✅ full_std:
+   MLP arrays: (3525, 18)
+   CNN arrays: (3525, 18, 1)
+✅ reduced:
+   MLP arrays: (3525, 10)
+   CNN arrays: (3525, 10, 1)
+✅ reduced_std:
+   MLP arrays: (3525, 10)
+   CNN arrays: (3525, 10, 1)
